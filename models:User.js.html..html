@@ -1,0 +1,17 @@
+const mongoose = require('mongoose');
+
+const FastSchema = new mongoose.Schema({
+  startTime: Date,
+  endTime: Date,
+  completed: Boolean
+});
+
+const UserSchema = new mongoose.Schema({
+  username: { type: String, unique: true },
+  password: String,
+  petStyle: { type: String, default: '🐶' },
+  petAlive: { type: Boolean, default: true },
+  fasts: [FastSchema]
+});
+
+module.exports = mongoose.model('User', UserSchema);

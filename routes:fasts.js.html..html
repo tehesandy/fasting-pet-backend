@@ -1,0 +1,52 @@
+const express = require('express');
+const router = express.Router();
+const auth = require('../middleware/auth');
+const User = require('../models/User');
+
+router.get('/me', auth, async (req, res) => {
+  const user = await User.findById(req.user.id);
+  if (!user) return res.status(404).json({ msg: 'Usuario no encontrado' });
+  res.json(user);
+});
+
+router.post('/start', auth, async (req, res) => {
+  const { duration } = req.body; // duración en segundos
+  const user = await User.findById(req.user.id);
+  const startTime = new Date();
+  const endTime = new Date(startTime.getTime() + duration * 1000);
+
+  user.fasts.push({ startTime, endTime, completed: false });
+  await user.save();
+
+  res.json({ fast: { startTime, endTime } });
+});
+
+router.post('/complete', auth, async (req, res) => {
+  const user = await User.findById(req.user.id);
+  const last = user.fasts[user.fasts.length - 1];
+  if (!last || last.completed) return res.json({ msg: 'No hay ayuno activo' });
+
+  const now = new Date();
+  const success = now >= last.endTime;
+
+  last.completed = success;
+  if (!success) user.petAlive = false;
+
+  await user.save();
+
+  res.json({
+    petAlive: user.petAlive,
+    petStyle: user.petStyle,
+    reward: success ? 'Medalla de ayuno 🏅' : null
+  });
+});
+
+router.post('/customize', auth, async (req, res) => {
+  const { petStyle } = req.body;
+  const user = await User.findById(req.user.id);
+  user.petStyle = petStyle;
+  await user.save();
+  res.json({ msg: 'Mascota actualizada' });
+});
+
+module.exports = router;

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Fasting Pet Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #fdf6e3;
+      padding: 20px;
+      text-align: center;
+    }
+    #pet { font-size: 80px; margin: 20px; }
+    .btn { padding: 10px 20px; margin: 10px; cursor: pointer; }
+    .hidden { display: none; }
+    input, select { padding: 6px; margin: 5px; }
+    #timer, #status, #reward { margin-top: 15px; font-size: 18px; }
+  </style>
+</head>
+<body>
+
+<h1>🐾 Fasting Pet Tracker</h1>
+
+<div id="auth">
+  <h2>Iniciar Sesión</h2>
+  <input id="login-username" placeholder="Usuario">
+  <input id="login-password" type="password" placeholder="Contraseña">
+  <button class="btn" onclick="login()">Entrar</button>
+
+  <h3>o Registrarse</h3>
+  <input id="register-username" placeholder="Nuevo usuario">
+  <input id="register-password" type="password" placeholder="Contraseña">
+  <button class="btn" onclick="register()">Registrar</button>
+</div>
+
+<div id="app" class="hidden">
+  <div id="pet">🐶</div>
+  <div id="status"></div>
+  <div id="timer"></div>
+  <div id="reward"></div>
+
+  <button class="btn" onclick="startFast()">Comenzar Ayuno (1 min)</button>
+  <button class="btn" onclick="completeFast()">Completar Ayuno</button>
+
+  <div>
+    <label for="pet-style">Mascota:</label>
+    <select id="pet-style" onchange="updatePet()">
+      <option value="🐶">Perro</option>
+      <option value="🐱">Gato</option>
+      <option value="🐸">Rana</option>
+      <option value="🐉">Dragón</option>
+    </select>
+  </div>
+
+  <button class="btn" onclick="logout()">Cerrar Sesión</button>
+</div>
+
+<script>
+  const API = 'http://localhost:5000/api';
+  let token = '', fastEndTime = null, countdownInterval = null;
+
+  function showApp() {
+    document.getElementById('auth').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    fetchMe();
+  }
+
+  function logout() {
+    token = '';
+    document.getElementById('auth').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  }
+
+  async function register() {
+    const username = document.getElementById('register-username').value;
+    const password = document.getElementById('register-password').value;
+    const res = await fetch(`${API}/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    alert(data.msg || 'Registrado');
+  }
+
+  async function login() {
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.token) {
+      token = data.token;
+      showApp();
+    } else {
+      alert(data.msg || 'Error al iniciar sesión');
+    }
+  }
+
+  async function fetchMe() {
+    const res = await fetch(`${API}/fasts/me`, {
+      headers: { Authorization: token }
+    });
+    const data = await res.json();
+
+    document.getElementById('status').innerText = data.petAlive
+      ? 'Tu mascota está feliz 🥳'
+      : 'Tu mascota ha muerto 💀';
+
+    document.getElementById('pet').innerText = data.petAlive ? (data.petStyle || '🐶') : '💀';
+    document.getElementById('pet-style').value = data.petStyle || '🐶';
+
+    const lastFast = data.fasts[data.fasts.length - 1];
+    if (lastFast && !lastFast.completed) {
+      fastEndTime = lastFast.endTime;
+      showCountdown();
+    }
+  }
+
+  async function startFast() {
+    const duration = 60;
+    const res = await fetch(`${API}/fasts/start`, {
+      method: 'POST',
+      headers: { Authorization: token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration })
+    });
+    const data = await res.json();
+    fastEndTime = data.fast.endTime;
+    showCountdown();
+    alert("Ayuno iniciado!");
+  }
+
+  async function completeFast() {
+    const res = await fetch(`${API}/fasts/complete`, {
+      method: 'POST',
+      headers: { Authorization: token }
+    });
+    const data = await res.json();
+
+    document.getElementById('pet').innerText = data.petAlive ? data.petStyle : '💀';
+    document.getElementById('status').innerText = data.petAlive
+      ? '¡Ayuno completado! 🎉'
+      : 'Ayuno fallido 😢';
+    document.getElementById('reward').innerText = data.reward ? `🎁 Recompensa: ${data.reward}` : '';
+    clearInterval(countdownInterval);
+    document.getElementById('timer').innerText = '';
+  }
+
+  async function updatePet() {
+    const style = document.getElementById('pet-style').value;
+    await fetch(`${API}/fasts/customize`, {
+      method: 'POST',
+      headers: { Authorization: token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ petStyle: style })
+    });
+    document.getElementById('pet').innerText = style;
+  }
+
+  function showCountdown() {
+    if (!fastEndTime) return;
+    clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+      const now = new Date();
+      const end = new Date(fastEndTime);
+      const diff = Math.floor((end - now) / 1000);
+      if (diff <= 0) {
+        clearInterval(countdownInterval);
+        document.getElementById('timer').innerText = '¡Ayuno finalizado! Completa ahora.';
+        return;
+      }
+      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+      const s = String(diff % 60).padStart(2, '0');
+      document.getElementById('timer').innerText = `⏳ Tiempo restante: ${h}:${m}:${s}`;
+    }, 1000);
+  }
+</script>
+</body>
+</html>
